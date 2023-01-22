@@ -27,7 +27,7 @@ import os
 app = Flask(__name__)
 basedir = os.path.abspath(os.path.dirname(__file__))
 # Database
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(basedir, 'db.sqlite')
+app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL') or 'sqlite:///' + os.path.join(basedir, 'db.sqlite')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 # Init db
@@ -71,8 +71,12 @@ def add_task():
 
     db.session.add(new_task)
     db.session.commit()
-
-    return task_schema.jsonify(new_task)
+    try:
+        return task_schema.jsonify(new_task)
+    except:
+        db.session.rollback()
+        return jsonify({"message": "An error occurred while adding the task."}), 500
+    
 
 # Get All Tasks
 @app.route('/task', methods=['GET'])   
@@ -85,7 +89,10 @@ def get_tasks():
 @app.route('/task/<id>', methods=['GET'])
 def get_task(id):
     task = Task.query.get(id)
-    return task_schema.jsonify(task)
+    try:
+        return task_schema.jsonify(task)
+    except:
+        return jsonify({"message": "Task not found."}), 404
 
 # Update a Task
 @app.route('/task/<id>', methods=['PUT'])
@@ -102,7 +109,7 @@ def update_task(id):
     task.year = year
     task.isbn = isbn
 
-    db.session.commit()
+    db.session.flush()
 
     return task_schema.jsonify(task)
 
@@ -117,7 +124,13 @@ def delete_task(id):
 
 # Run Server
 if __name__ == '__main__':
+    db.create_all()
     app.run(debug=True)
+
+
+@app.teardown_appcontext
+def shutdown_session(exception=None):
+    db.session.remove()
 
 
 
